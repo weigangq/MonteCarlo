@@ -1,0 +1,36 @@
+Re-analysis of Grassmann et al (2025)
+Borrelia transcriptome comparison between WT vs KO and WT vs R39A mutants
+
+Part 1. load libraries; set working directory
+```{r}
+library(tidyverse)
+library(readxl)
+setwd("~/Dropbox/MonteCarlo")
+```
+Part 2. Read data table, reshape into long tables
+
+```{r}
+x <- read_excel("Bb-transcriptomes/mmi70036-sup-0002-tables2.xlsx", sheet = 3)
+colnames(x)
+
+x.long <- x |>
+    select(1, 8:14) |>
+    pivot_longer(2:8, names_to = "treat", values_to = "rfpkm")  
+
+x.long <- x.long |>
+    mutate(rep = as.numeric(str_remove(treat, "^.*_")))
+
+x.long <- x.long |>
+    mutate(treat2 = str_remove(treat, "_\\d$"))
+
+```
+
+Part 3. Plot histogram to show distributions
+
+```{r}
+x.long |>
+    ggplot(aes(rfpkm, fill = as.factor(rep))) +
+    geom_histogram(bins = 100) +
+    scale_x_log10() +
+    facet_wrap(~treat2)
+```
