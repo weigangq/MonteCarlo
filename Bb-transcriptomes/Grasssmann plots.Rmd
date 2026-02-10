@@ -1,0 +1,159 @@
+---
+title: 'Grassmann analysis'
+author: "Toka Othman"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+Re-analysis of Grassmann et al (2025)
+Borrelia transcriptome comparison between WT vs KO and WT vs R39A mutants
+
+
+# Part 1. load libraries; set working directory
+
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(EnhancedVolcano)
+library(ggrepel)
+setwd("~/QiuLab-work/")
+```
+
+# Part 2. Read data table, reshape into long tables
+
+```{r}
+x <- read_excel("mmi70036-sup-0002-tables2.xlsx", sheet = 3)
+colnames(x)
+
+x.long <- x |>
+    select(1, 8:14) |>
+    pivot_longer(2:8, names_to = "treat", values_to = "rfpkm")  
+
+x.long <- x.long |>
+    mutate(rep = as.numeric(str_remove(treat, "^.*_")))
+
+x.long <- x.long |>
+    mutate(treat2 = str_remove(treat, "_\\d$"))
+
+```
+
+
+# Part 3. Plot histogram to show distributions
+
+```{r}
+x.long |>
+    ggplot(aes(rfpkm+1, fill = as.factor(rep))) +
+    geom_histogram(bins = 100) +
+    scale_x_log10() +
+    facet_wrap(~treat2, nrow=2)
+```
+
+
+# Part 4. plot volcano plot
+
+```{r}
+library(EnhancedVolcano)
+library(ggrepel)
+
+EnhancedVolcano(
+    toptable = x,
+    lab = x$GeneID,
+    x = "log2FoldChange",
+    y = "pvalue",
+    title = "WT_in_vitro vs ΔbosR _in_vitro",
+    pCutoff = 0.05,
+    FCcutoff = 1,
+    pointSize = 2.0,
+    labSize = 3.0)
+```
+# Part 5. read data frame
+
+```{r}
+y <- read_excel("mmi70036-sup-0003-tables3.xlsx", sheet = 3)
+
+```
+
+# Part 6. select desired data
+
+```{r}
+
+in_vitro <- x[, c(1, 8, 9, 10)]
+colnames(in_vitro) <- c("GeneID", "WT_in_vitro_1", "WT_in_vitro_2", "WT_in_vitro_3")
+
+
+DMC <- y[, c(1, 8:13)]
+colnames(DMC) <- c("GeneID","WT_DMC1","WT_DMC2","WT_DMC3","WT_DMC4","WT_DMC5","WT_DMC6")
+
+
+WT <- merge(in_vitro, DMC , by = "GeneID")
+
+```
+
+# Part 7. calculate fold change 
+read counts need to be in log2+1; and then take the mean for WT & 
+
+```{r}
+
+FC <- WT %>%
+mutate(in_vitro_mean = rowMeans(select(., 2:4)),
+ DMC_mean = rowMeans(select(., 5:10)),
+ fold_change = DMC_mean / in_vitro_mean,
+ log2FC = log2(fold_change))
+
+FC |>
+  ggplot(aes(x = log2FC)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "red") +
+  theme_bw()
+
+```
+
+# Part 8. Calculate pvalue
+
+```{r}
+
+FC <- FC %>%
+  rowwise() %>%
+  mutate(pvalue = t.test(c_across(2:4), c_across(5:10))$p.value) %>%
+  ungroup() %>%
+  mutate(p_adj = p.adjust(pvalue, method = "BH"))
+
+```
+
+```{r}
+FC_clean <- FC %>% filter(is.finite(log2FC),is.finite(pvalue))
+
+# show BB_Q67, methyl-transferase
+gene.sel <- FC_clean |> filter(GeneID == 'BB_Q67') 
+#|> select(in_vitro_mean, DMC_mean, fold_change, pvalue, p_adj)
+```
+
+# Part 9. plot volcano plot
+
+```{r}
+
+EnhancedVolcano(
+  toptable = FC_clean,
+  lab = FC_clean$GeneID,
+  x = "log2FC",
+  y = "pvalue",
+  title = "WT_in_vitro vs WT_in_DMC",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  pointSize = 2.0,
+  labSize = 3.0) 
+
+FC_clean |>
+  ggplot(aes(log2FC, p_adj)) +
+  geom_point(shape = 1) +
+  geom_point(data = gene.sel, col = "red") +
+  scale_y_log10() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_hline(yintercept = 1e-3, col = "red") +
+  theme_bw()
+#  geom_point(data = gene.sel, size = 3, col = "orange" )
+
+```
