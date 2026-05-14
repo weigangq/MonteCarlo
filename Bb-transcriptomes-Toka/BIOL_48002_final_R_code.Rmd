@@ -1,0 +1,268 @@
+---
+title: "BIOL_425_fina_R_code"
+author: "Toka Othman"
+date: "2026-05-07"
+output: word_document
+---
+
+Re-analysis of Grassmann et al (2025)
+Borrelia transcriptome comparisons 
+
+# Part 1. load libraries; set working directory
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(EnhancedVolcano)
+library(ggrepel)
+library(shiny)
+library(bslib)
+library(modeldata)
+library(DataExplorer)
+library(plotly)
+library(ggplot2)
+library(BiocManager)
+
+setwd("~/QiuLab-work/")
+```
+
+# Part 2. Read data table, reshape into long tables
+
+```{r}
+x <- read_excel("mmi70036-sup-0002-tables2.xlsx", sheet = 3)
+colnames(x)
+
+x.long <- x |>
+    select(1, 8:14) |>
+    pivot_longer(2:8, names_to = "treat", values_to = "rfpkm")  
+
+x.long <- x.long |>
+    mutate(rep = as.numeric(str_remove(treat, "^.*_")))
+
+x.long <- x.long |>
+    mutate(treat2 = str_remove(treat, "_\\d$"))
+
+```
+
+# Part 3. Plot histogram to show distributions
+
+```{r}
+x.long |>
+    ggplot(aes(rfpkm+1, fill = as.factor(rep))) +
+    geom_histogram(bins = 100) +
+    scale_x_log10() +
+    facet_wrap(~treat2, nrow=2)
+```
+
+# Part 4. read data frame
+
+```{r}
+x <- read_excel("mmi70036-sup-0002-tables2.xlsx", sheet = 3)
+y <- read_excel("mmi70036-sup-0003-tables3.xlsx", sheet = 3)
+
+```
+
+# Part 5. select desired data
+
+```{r}
+
+in_vitro <- x[, c(1, 8, 9, 10)]
+colnames(in_vitro) <- c("GeneID", "WT_in_vitro_1", "WT_in_vitro_2", "WT_in_vitro_3")
+
+
+DMC <- y[, c(1, 8:13)]
+colnames(DMC) <- c("GeneID","WT_DMC1","WT_DMC2","WT_DMC3","WT_DMC4","WT_DMC5","WT_DMC6")
+
+
+WT <- merge(in_vitro, DMC , by = "GeneID")
+
+```
+
+#normilization
+```{r}
+library(preprocessCore)
+
+normalized_data <- normalize.quantiles(as.matrix(WT[, -1]))
+
+WT <- data.frame(GeneID = WT$GeneID, normalized_data)
+colnames(WT)[-1] <- c("WT_in_vitro_1","WT_in_vitro_2","WT_in_vitro_3",
+                      "WT_DMC1","WT_DMC2","WT_DMC3",
+                      "WT_DMC4","WT_DMC5","WT_DMC6")
+
+WT[, -1] <- log2(WT[, -1] + 1)
+```
+
+# Part 6. calculate fold change 
+
+
+```{r}
+
+FC <- WT %>%
+mutate(in_vitro_mean = rowMeans(select(., 2:4)),
+ DMC_mean = rowMeans(select(., 5:10)),
+ fold_change = DMC_mean / in_vitro_mean,
+ log2FC = log2(fold_change))
+
+FC |>
+  ggplot(aes(x = log2FC)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "red") +
+  theme_bw() +
+  labs(title = "WT_in_vitro vs WT_in_DMC")
+
+```
+
+# Part 7. Calculate pvalue
+
+```{r}
+
+FC <- FC %>%
+  rowwise() %>%
+  mutate(
+  pvalue = if(sd(c_across(2:4)) == 0 | sd(c_across(5:10)) == 0) NA_real_
+    else t.test(c_across(2:4), c_across(5:10))$p.value) %>%
+  ungroup() %>%
+  mutate(p_adj = p.adjust(pvalue, method = "BH"))
+
+
+```
+
+```{r}
+FC_clean <- FC %>%
+  filter(is.finite(log2FC), !is.na(pvalue))
+
+# show BB_Q67, methyl-transferase
+gene.sel <- FC_clean |> filter(GeneID %in% c('BB_Q67', 'BB_A15', 'BB_B19', 'BB_B24')) 
+#|> select(in_vitro_mean, DMC_mean, fold_change, pvalue, p_adj)
+```
+
+# Part 8. plot volcano plot
+
+```{r}
+
+EnhancedVolcano(
+  toptable = FC_clean,
+  lab = FC_clean$GeneID,
+  x = "log2FC",
+  y = "pvalue",
+  title = "WT_in_vitro vs WT_in_DMC",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  pointSize = 2.0,
+  labSize = 3.0) 
+
+FC_clean |>
+  ggplot(aes(log2FC, p_adj, label = GeneID)) +
+  geom_point(shape = 1) +
+  geom_point(data = gene.sel, col = "red") +
+  geom_text_repel(data = gene.sel, col = "red") +
+  scale_y_log10() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_hline(yintercept = 1e-3, col = "red") +
+  theme_bw()+
+  labs(title = "WT_in_vitro vs WT_in_DMC")
+#  geom_point(data = gene.sel, size = 3, col = "orange" )
+
+```
+
+#Table 2 - in vitro
+
+```{r}
+WT_vs_bosR_in_vitro <- read_excel("mmi70036-sup-0002-tables2.xlsx", sheet = 3)
+colnames(WT_vs_bosR_in_vitro)
+
+WT_vs_bosR_in_vitro %>% 
+  ggplot(aes(x = log2FoldChange)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "red") +
+  theme_bw() +
+  labs(title = "WT_in_vitro vs ∆bosR_in_vitro")
+
+```
+
+```{r}
+WT_vs_bosR_in_vitro %>% 
+  ggplot(aes(log2FoldChange,padj)) +
+  geom_point(shape = 1) +
+  scale_y_log10() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_hline(yintercept = 1e-3, col = "red") +
+  theme_bw() +
+  labs(title = "WT_in_vitro vs ∆bosR_in_vitro")
+```
+
+```{r}
+WT_vs_bosR_R39A_in_vitro <- read_excel("mmi70036-sup-0002-tables2.xlsx", sheet = 4)
+colnames(WT_vs_bosR_R39A_in_vitro)
+
+WT_vs_bosR_R39A_in_vitro %>% 
+  ggplot(aes(x = log2FoldChange)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "red") +
+  theme_bw() + 
+  labs(title = "WT_vs_bosR_R39A_in_vitro")
+  
+
+```
+
+```{r}
+WT_vs_bosR_R39A_in_vitro %>% 
+  ggplot(aes(log2FoldChange, padj)) +
+  geom_point(shape = 1) +
+  scale_y_log10() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_hline(yintercept = 1e-3, col = "red") +
+  theme_bw() +
+  labs(title = "WT_vs_bosR_R39A_in_vitro")
+```
+
+# table 3 DMC 
+
+```{r}
+WT_vs_bosR_DMC <- read_excel("mmi70036-sup-0003-tables3.xlsx", sheet = 3)
+colnames(WT_vs_bosR_DMC)
+
+WT_vs_bosR_DMC %>% 
+  ggplot(aes(x = log2FoldChange)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "red") +
+  theme_bw() +
+  labs(title = "WT_vs_∆bosR_DMC")
+  
+
+```
+
+```{r}
+WT_vs_bosR_DMC %>% 
+  ggplot(aes(log2FoldChange, padj)) +
+  geom_point(shape = 1) +
+  scale_y_log10() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_hline(yintercept = 1e-3, col = "red") +
+  theme_bw() +
+  labs(title = "WT_vs_∆bosR_DMC")
+```
+
+```{r}
+WT_vs_bosR_R39A_DMC <- read_excel("mmi70036-sup-0003-tables3.xlsx", sheet = 4)
+colnames(WT_vs_bosR_R39A_DMC)
+
+WT_vs_bosR_R39A_DMC %>% 
+  ggplot(aes(x = log2FoldChange)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "red") +
+  theme_bw() +
+  labs(title = "WT_vs_bosR_R39A_DMC")
+```
+
+```{r}
+WT_vs_bosR_R39A_DMC %>% 
+  ggplot(aes(log2FoldChange, padj)) +
+  geom_point(shape = 1) +
+  scale_y_log10() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_hline(yintercept = 1e-3, col = "red") +
+  theme_bw() +
+  labs(title = "WT_vs_bosR_R39A_DMC")
+```
