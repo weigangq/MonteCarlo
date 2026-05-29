@@ -1,0 +1,524 @@
+---
+title: "Characterization and Genomic Analysis of the Lyme disease spirochete bacteriophage phiBB-1 Fig 5B, 5C, and 5D." 
+subtitle: "phiBB-1 virions package cp32 isoforms, chromosome fragments, lp54, and other plasmid DNA." 
+author: "Ashqul Islam"
+date: "2026-05-08"
+output: pdf_document
+---
+The following analysis represents an independent reconstruction of Figures 5B, 5C, and 5D
+from the listed publication:
+Faith DR, Kinnersley M, Brooks DM, Drecktrah D, Hall LS, Luo E, et al. (2024) 
+Characterization and genomic analysis of the Lyme disease spirochete bacteriophage phiBB-1. 
+PLoS Pathog 20(4): e1012122. https://doi.org/10.1371/journal.ppat.1012122
+
+Publicly available sequencing data found under the journal article was used to
+generate tables that were then visualized using ggplot2 to replicate the original figures.
+
+This was done as a final bioinformatics project for an independent study at the Qiu lab at 
+CUNY Hunter College for a Biology MA.
+
+Sequence alignment and filtering according to the methods of the publication
+can be found in the seqpipe.sh script.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library, ref and tsv1 setup, message = FALSE}
+setwd("/Users/ashqulislam/Desktop/QiuLab/BB1 Figure Project/")
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+#Open reference, idx, and coverage files
+ref <- read_tsv("reference_lookup_tabs.tsv",
+                col_names = c("Reference", "Replicon"))
+
+kable(ref,
+      caption = "Reference Table",
+      booktabs = TRUE)
+
+aln1f_idx <- read_tsv("aln1_filtered_idxstats.tsv",
+                     col_names = c("Reference", 
+                                   "Length", 
+                                   "Mapped_Reads", 
+                                   "Unmapped_Reads"))
+
+#Removed an unknown tab that wasn't tied to Chromosome or plasmids
+#Aligned the reference_lookup tsv which had the replicon names aligned to Reference
+aln1f_idx <- aln1f_idx |>
+  filter (Reference != "*") |>
+  left_join(ref, by = "Reference")
+
+# Rearranged rows to account for left_join
+aln1f_idx <- aln1f_idx |>
+  select(Reference, Replicon, everything())
+#The Chromosome section had multiple rows, assumed it took several reads to 
+#cover it. whole_row1 is the isolation of the rows via filter and then summarize
+#to condense values. Due to multiple rows encompassing one variable, values are summed.
+
+#ref table and tsv's lists chromosome as "whole". 
+#Renamed to "chromosome" for readability
+
+whole_row1f <- aln1f_idx |>
+  filter(Replicon == "whole") |>
+  summarize(
+    Reference = "Chromosome",
+    Length = sum(Length),
+    Mapped_Reads = sum(Mapped_Reads),
+    Unmapped_Reads = sum(Unmapped_Reads),
+    Replicon = "chromosome")
+
+#Bind the row back to aln1_idx
+aln1f_idx <- aln1f_idx |>
+  filter(Replicon != "whole") |>
+  bind_rows(whole_row1f)
+
+kable(aln1f_idx,
+      caption = "Idxstats table following modifications.",
+      booktabs = TRUE)
+
+#Coverage file needed a rename. Followed by a join of ref tsv along with
+#reordering the columns
+
+aln1f_cov <- read_tsv("aln1_filtered_coverage.tsv",
+                     comment = "")
+
+kable(aln1f_cov,
+      caption =  "Coverage Table 1 Unedited",
+      booktabs = TRUE)
+
+aln1f_cov<-aln1f_cov |>
+  rename(Reference = '#rname')
+aln1f_cov <- aln1f_cov |>
+  left_join(ref, by = "Reference")|>
+  select(Reference, Replicon, everything())
+
+#Chromosome row summarize again but for coverage file. Temporary copies of endpos
+#and numreads were used to prevent errors during weights.
+#Weights could conflict with sum calculations due to length mismatch. 
+#Weighted means in respect to numreads to account for variability
+
+whole_row11f <- aln1f_cov |>
+  filter(Replicon == "whole")|>
+  mutate(
+    fragment_length = endpos,
+    fragment_reads = numreads
+  )
+
+whole_row11f <- whole_row11f |>
+  summarize(
+    Reference = "Chromosome",
+    Replicon = "chromosome",
+    startpos = mean(startpos),
+    endpos = sum(endpos),
+    numreads = sum(numreads),
+    covbases = sum(covbases),
+    coverage = weighted.mean(x =coverage, 
+                             w = fragment_length),
+    meandepth = weighted.mean(x = meandepth, 
+                              w = fragment_length),
+    meanbaseq = weighted.mean(x = meanbaseq, 
+                              w = fragment_reads),
+    meanmapq = weighted.mean(x = meanmapq, 
+                             w = fragment_reads)
+  )
+aln1f_cov <- aln1f_cov |>
+  filter(Replicon != "whole")|>
+  bind_rows(whole_row11f)
+
+#coverage table with relevant columns, ref tabled joined in, summarized chromosome
+
+aln1f_cov |>
+  select(Reference, Replicon, endpos, numreads, coverage, meandepth, meanmapq)|>
+  kable(
+    caption = "Replicate 1 coverage table post-changes.",
+    booktabs = TRUE)
+```
+
+This process is replicated for tsvs 2 and 3. A final coverage table will be
+included for visualization but the code will be hidden during Knit.
+
+```{r tsv2 setup, echo=FALSE, message = FALSE}
+#Repeat of tsv1 setup
+aln2f_idx <- read_tsv("aln2_filtered_idxstats.tsv",
+                     col_names = c("Reference", "Length", "Mapped_Reads", "Unmapped_Reads"))
+aln2f_idx <- aln2f_idx |>
+  filter (Reference != "*") |>
+  left_join(ref, by = "Reference")
+aln2f_idx <- aln2f_idx |>
+  select(Reference, Replicon, everything())
+whole_row2f <- aln2f_idx |>
+  filter(Replicon == "whole") |>
+  summarize(
+    Reference = "Chromosome",
+    Length = sum(Length),
+    Mapped_Reads = sum(Mapped_Reads),
+    Unmapped_Reads = sum(Unmapped_Reads),
+    Replicon = "chromosome")
+aln2f_idx <- aln2f_idx |>
+  filter(Replicon != "whole") |>
+  bind_rows(whole_row2f)
+aln2f_cov <- read_tsv("aln2_filtered_coverage.tsv",
+                     comment = "")
+aln2f_cov<-aln2f_cov |>
+  rename(Reference = '#rname')
+aln2f_cov <- aln2f_cov |>
+  left_join(ref, by = "Reference")|>
+  select(Reference, Replicon, everything())
+
+whole_row22f <- aln2f_cov |>
+  filter(Replicon == "whole")|>
+  mutate(
+    fragment_length = endpos,
+    fragment_reads = numreads
+  )
+
+whole_row22f <- whole_row22f |>
+  summarize(
+    Reference = "Chromosome",
+    Replicon = "chromosome",
+    startpos = mean(startpos),
+    endpos = sum(endpos),
+    numreads = sum(numreads),
+    covbases = sum(covbases),
+    coverage = weighted.mean(x =coverage, 
+                             w = fragment_length),
+    meandepth = weighted.mean(x = meandepth, 
+                              w = fragment_length),
+    meanbaseq = weighted.mean(x = meanbaseq, 
+                              w = fragment_reads),
+    meanmapq = weighted.mean(x = meanmapq, 
+                             w = fragment_reads)
+  )
+aln2f_cov <- aln2f_cov |>
+  filter(Replicon != "whole")|>
+  bind_rows(whole_row22f)
+```
+
+```{r tsv3 setup, message = FALSE, echo = FALSE}
+aln3f_idx <- read_tsv("aln3_filtered_idxstats.tsv",
+                     col_names = c("Reference", "Length", "Mapped_Reads", "Unmapped_Reads"))
+aln3f_idx <- aln3f_idx |>
+  filter (Reference != "*") |>
+  left_join(ref, by = "Reference")
+aln3f_idx <- aln3f_idx |>
+  select(Reference, Replicon, everything())
+whole_row3f <- aln3f_idx |>
+  filter(Replicon == "whole") |>
+  summarize(
+    Reference = "Chromosome",
+    Length = sum(Length),
+    Mapped_Reads = sum(Mapped_Reads),
+    Unmapped_Reads = sum(Unmapped_Reads),
+    Replicon = "chromosome")
+aln3f_idx <- aln3f_idx |>
+  filter(Replicon != "whole") |>
+  bind_rows(whole_row3f)
+aln3f_cov <- read_tsv("aln3_filtered_coverage.tsv",
+                     comment = "")
+aln3f_cov<-aln3f_cov |>
+  rename(Reference = '#rname')
+aln3f_cov <- aln3f_cov |>
+  left_join(ref, by = "Reference")|>
+  select(Reference, Replicon, everything())
+
+whole_row33f <- aln3f_cov |>
+  filter(Replicon == "whole")|>
+  mutate(
+    fragment_length = endpos,
+    fragment_reads = numreads
+  )
+
+whole_row33f <- whole_row33f |>
+  summarize(
+    Reference = "Chromosome",
+    Replicon = "chromosome",
+    startpos = mean(startpos),
+    endpos = sum(endpos),
+    numreads = sum(numreads),
+    covbases = sum(covbases),
+    coverage = weighted.mean(x =coverage, 
+                             w = fragment_length),
+    meandepth = weighted.mean(x = meandepth, 
+                              w = fragment_length),
+    meanbaseq = weighted.mean(x = meanbaseq, 
+                              w = fragment_reads),
+    meanmapq = weighted.mean(x = meanmapq, 
+                             w = fragment_reads)
+  )
+aln3f_cov <- aln3f_cov |>
+  filter(Replicon != "whole")|>
+  bind_rows(whole_row33f)
+```
+```{r tsv 2 and 3 preview, echo=FALSE, message = FALSE}
+aln2f_cov|>
+  select(Reference, Replicon, endpos, numreads, coverage, meandepth, meanmapq)|>
+  kable(
+    caption = "Replicate 2 coverage table post-changes.",
+    booktabs = TRUE)
+aln3f_cov|>
+  select(Reference, Replicon, endpos, numreads, coverage, meandepth, meanmapq)|>
+  kable(
+      caption = "Replicate 3 coverage table post-changes.",
+      booktabs = TRUE)
+```
+
+```{r cov_all setup, message= FALSE}
+#Combine all coverage tables, include replicate numbers
+
+aln1f_cov <- aln1f_cov |>
+  mutate(Replicate = "Replicate 1")
+aln2f_cov <- aln2f_cov |>
+  mutate(Replicate = "Replicate 2")
+aln3f_cov <- aln3f_cov |>
+  mutate(Replicate = "Replicate 3")
+cov_allf <- bind_rows (aln1f_cov, aln2f_cov, aln3f_cov)
+
+#Calculate percent reads for Figure 5B and remove grouping
+
+cov_allf <- cov_allf |>
+  group_by(Replicate) |>
+  mutate(percent_reads = numreads / sum(numreads) *100)|>
+  ungroup()
+
+#An arrangement of replicon order to match publication figures
+
+replicon_order <- c("cp32-1", "cp32-3", "cp32-5", "cp32-10", "cp32-13",
+                    "chromosome", "lp54", "cp26", "lp17", "lp36-28-4", "lp38",
+                    "lp56", "lp28-3")
+
+```
+
+```{r, echo=FALSE, message = FALSE}
+cov_allf |>
+  select(Reference, Replicon, endpos, numreads, coverage, meandepth, meanmapq,Replicate)|>
+  head(15)|>
+  kable(caption = "Shortened Combined Coverage Table",
+        booktabs = TRUE)
+```
+
+```{r Figure B, message= FALSE}
+
+#calculate a mean percent read and se based off all replicates
+
+figBf_summary <- cov_allf |>
+  group_by(Replicon) |>
+  summarize(
+    mean_percent = mean(percent_reads),
+    se_percent = sd(percent_reads)/sqrt(n()),
+    .groups = "drop"
+  ) |>
+  mutate(Replicon = factor(Replicon, levels = replicon_order))
+
+#setup to include replicates
+
+cov_all_plot <- cov_allf |>
+  mutate(
+    Replicate = factor(
+      Replicate,
+      levels = c("Replicate 1", "Replicate 2", "Replicate 3")
+    ),
+    Replicon = factor(Replicon, levels = replicon_order)
+    )
+
+figB <- ggplot(data = figBf_summary)+
+  aes(x = Replicon, y = mean_percent)+
+  coord_cartesian(xlim = NULL, ylim = c(0,45))+
+  labs(x = NULL, y = "% reads")+
+  theme_classic(base_size = 18)+
+  scale_y_continuous(expand = c(0,0))+ #remove offset on x-axis
+  theme(
+    axis.line = element_line(linewidth = 0.8),
+    axis.ticks = element_line(linewidth = 1.2),
+    axis.ticks.length = unit(0.2, "cm"),
+    axis.text.x = element_text(angle = 55, hjust =1, size = 16)
+  )+
+  geom_col(
+    fill = "royalblue4",
+    color = "black",
+    linewidth = 0.8
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = mean_percent - se_percent,
+      ymax = mean_percent + se_percent))+
+  geom_point(
+    data = cov_all_plot,
+    aes(x = Replicon, y = percent_reads, shape = Replicate),
+    position = position_jitterdodge(jitter.width = 0.05,
+                                    dodge.width = 0.5), #prevent replicate overlap
+    size = 3,
+    fill = "gray80",
+    color = "black",
+    stroke = 0.8
+  ) +
+   scale_shape_manual(
+     values = c(
+       "Replicate 1" = 21,
+       "Replicate 2" = 22,
+       "Replicate 3" = 24 #manually include replicate shapes
+     )
+   )
+```
+\newpage
+Original Published Figure 5B
+```{r message = FALSE, echo = FALSE, out.width="100%",fig.pos='H'}
+# Original Published Figure 5B
+knitr::include_graphics("original_figure_5b.png")
+```
+Independent Reconstruction of Figure 5B
+```{r message = FALSE, echo = FALSE,fig.align='center'}
+# Independent Reconstruction of Figure 5B
+figB
+```
+\newpage
+```{r Figure 5C}
+#installed ggbreak here. Removed for rmd
+#install.packages ("ggbreak")
+library(ggbreak)
+#same process as Figure 5B
+figCf_summary <- cov_allf |>
+  group_by(Replicon) |>
+  summarize(
+    mean_depth = mean(meandepth),
+    se_depth = sd(meandepth)/sqrt(n()),
+    .groups = "drop"
+  ) |>
+  mutate(Replicon = factor(Replicon, levels = replicon_order))
+
+#scale_y_break used to replicate broken y axis in original figure
+#Unable to fix x-axis offset due to it being an artifact of ggbreak
+
+figC <- ggplot(data = figCf_summary)+
+  aes(x = Replicon, y = mean_depth)+
+  labs(x = NULL, y = "Mean Coverage")+
+  coord_cartesian(clip = "off")+
+  scale_y_continuous(expand = c(0,0),
+                     breaks = c(0, 20, 75, 150, 1000, 3000, 5000),
+                     limits = c(0, 5000))+
+  scale_y_break(c(150, 900),
+                scales = 0.3,
+                space = 0.8)+
+  theme_classic(base_size = 18)+
+  theme(
+    axis.line = element_line(linewidth = 0.8),
+    axis.ticks = element_line(linewidth = 1.2),
+    axis.ticks.length = unit(0.2, "cm"),
+    axis.text.x = element_text(angle = 55, hjust =1, size = 16),
+    axis.line.y.right = element_blank(),
+    axis.ticks.y.right = element_blank(),
+    axis.text.y.right = element_blank(), #removed a right-sided y-axis
+    panel.spacing = unit(0, "lines")
+    )+
+  geom_col(
+    fill = "royalblue4",
+    color = "black",
+    linewidth = 0.8
+  ) +
+  geom_hline(
+    yintercept = 20,
+    linetype = "dotted",
+    color = "orange",
+    linewidth = 0.8
+  )+
+  geom_errorbar(
+    aes(
+      ymin = mean_depth - se_depth,
+      ymax = mean_depth + se_depth),
+    width = 0.25,
+    linewidth = 0.8 
+    )+
+  geom_point(
+    data = cov_all_plot,
+    aes(x = Replicon, y = meandepth, shape = Replicate),
+    size = 3,
+    fill = "gray80",
+    color = "black",
+    stroke = 0.8
+  ) +
+   scale_shape_manual(
+     values = c(
+       "Replicate 1" = 21,
+       "Replicate 2" = 22,
+       "Replicate 3" = 24
+     )
+   )
+```
+\newpage
+Original Published Figure 5C
+```{r message = FALSE, echo = FALSE, out.width="100%",fig.pos='H'}
+# Original Published Figure 5C
+knitr::include_graphics("original_figure_5c.png")
+```
+Independent Reconstruction of Figure 5C
+```{r message = FALSE, echo = FALSE,fig.align='center'}
+# Independent Reconstruction of Figure 5C
+figC
+```
+\newpage
+```{r setup for Figure 5D, message=FALSE}
+read_1 <- read_tsv("aln1_read_lengths.tsv")|>
+  mutate(Replicate = "Replicate 1")
+read_2 <- read_tsv("aln2_read_lengths.tsv")|>
+  mutate(Replicate = "Replicate 2")
+read_3 <- read_tsv("aln3_read_lengths.tsv")|>
+  mutate(Replicate = "Replicate 3")
+reads_all <- bind_rows(read_1,
+                       read_2,
+                       read_3)
+reads_all <- left_join(reads_all, ref, by = "Reference")
+reads_all <- reads_all |>
+  mutate(Replicon = recode(Replicon,
+                           "whole" = "chromosome"))
+reads_all <- reads_all |>
+  mutate(Replicon = factor(Replicon, levels = replicon_order))
+
+#Preview of reads_all
+
+reads_all|>
+  head(17)|>
+  kable(caption = "Raw Read Table 17/58k rows",
+        booktabs=TRUE)
+
+```
+
+```{r Figure 5D, message = FALSE}
+
+#No replicates, all three long-read runs were likely combined
+
+figD <- ggplot(data = reads_all)+
+  aes(x = Replicon, y = ReadLength)+
+  coord_cartesian(xlim = NULL, ylim = c(0,100000))+
+  scale_y_continuous(expand = 0)+
+  labs(x = NULL, y = "Read Length")+
+  theme_classic(base_size = 18)+
+  theme(
+    axis.line = element_line(linewidth = 1.2),
+    axis.ticks = element_line(linewidth = 1.2),
+    axis.ticks.length = unit(0.2, "cm"),
+    axis.text.x = element_text(angle = 55, hjust =1, size = 16))+
+  geom_violin(
+    adjust = 0.7,
+    scale = "width",
+    trim = TRUE,
+    width = 0.7,
+    linewidth = 0.5,
+    draw_quantiles = c(0.25, 0.5, 0.75),
+    fill = "royalblue4",
+    color = "black") #adjust, scale, trim, and width for improved visualization
+```
+\newpage
+Original Published Figure 5D
+```{r message = FALSE, echo = FALSE, out.width="100%",fig.pos='H'}
+# Original Published Figure 5D
+knitr::include_graphics("original_figure_5d.png")
+```
+Independent Reconstruction of Figure 5D
+```{r message = FALSE, echo = FALSE,fig.align='center'}
+# Independent Reconstruction of Figure 5D
+figD
+```
+Full Analysis of reconstructions can be found in the BIOL792.02_phiBB1_report.
+Generally, the reproduced figures seem to match the same trends observed in the 
+original publication. Differences may be due to differences in methods and
+tools used at certain steps and a lack of access to the original source code.
